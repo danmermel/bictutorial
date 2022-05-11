@@ -60,9 +60,11 @@ data "ibm_database_connection" "icd_conn" {
 output "analytics" {
   description = "Analytics Node connection string"
   value       = data.ibm_database_connection.icd_conn.analytics
+  sensitive = true
 }
 
 output "bi_connector" {
   description = "BI Connector connection string"
   value       = data.ibm_database_connection.icd_conn.bi_connector
+  sensitive = true
 }

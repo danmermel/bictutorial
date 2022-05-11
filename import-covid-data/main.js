@@ -1,7 +1,12 @@
-const { request } = require("undici")
+const { request, connect } = require("undici")
 const { MongoClient } = require("mongodb")
+const fs = require ("fs")
 
 const noop = (value) => value
+const connections = require("./output.json")
+//reads the terraform.tfvars file and extracts variables from it... this creates an admin_password variable to be used in the main function
+eval(fs.readFileSync("../terraform/terraform.tfvars").toString())
+
 
 
 async function getDataAsJson() {
@@ -9,7 +14,7 @@ async function getDataAsJson() {
     const response = await request("https://covid19.who.int/WHO-COVID-19-global-data.csv")
     const csvData = await response.body.text()
 
-    // parse CSV			
+    // parse CSV and make sure numbers are returned as numbers and not strings			
     const keys = [
         { name: "dateReported", parser: noop },
         { name: "countryCode", parser: noop },
@@ -42,12 +47,11 @@ async function getDataAsJson() {
 
 
 async function main() {
-    // example node main.js "member-1:30117,member-2:30117,member-3:30117" "username" "password"
-    const [hosts, username, password] = [...process.argv].slice(2);
 
-    const uri = `mongodb://${username}:${password}@${hosts}/?replicaSet=replset&ssl=true&tlsInsecure=true`
-
-
+    const collection_name="daily_covid_global_data"
+    const uri = `${connections.analytics.value[0].composed[0]}&ssl=true&tlsInsecure=true`.replace('$PASSWORD', admin_password)
+    //console.log(uri)
+    
     const docs = await getDataAsJson();
 
     const client = new MongoClient(uri);
@@ -57,9 +61,15 @@ async function main() {
 
     // select DB
     const database = client.db("WHO");
+    const collection = database.collection(collection_name)
 
-    // select collection
-    const collection = database.collection("daily_covid_global_data")
+    const collections = (await database.listCollections().toArray()).map(e => e.name) 
+    //console.log(collections)
+    if (collections.indexOf(collection_name) !== -1 ){
+        console.log("Collection exists.. dropping")
+        //collection exists... drop it
+        await collection.drop()
+    } 
 
     console.log("inserting data...")
     
@@ -67,6 +77,12 @@ async function main() {
     await collection.insertMany(docs)
 
     client.close()
+    const bi_host = connections.bi_connector.value[0].hosts[0].hostname
+    const bi_port = connections.bi_connector.value[0].hosts[0].port
+    console.log("Data is in MongoDB! Now use this connection string with Tableau in the next step: " )
+    console.log("Hostname: ", bi_host)
+    console.log("Port: ", bi_port)
+
 }
 
 main();
